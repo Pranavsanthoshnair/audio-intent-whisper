@@ -19,14 +19,21 @@ import { SessionCard } from '@/components/SessionCard';
 import { ExportButtons } from '@/components/ExportButtons';
 import { TranscriptionProgress } from '@/components/TranscriptionProgress';
 import { TranscriptViewer } from '@/components/TranscriptViewer';
+import { TranslationProgress } from '@/components/TranslationProgress';
+import { DualLanguageViewer } from '@/components/DualLanguageViewer';
+import { ModelLoadingProgress } from '@/components/ModelLoadingProgress';
+import { ThreatAnalysisCard } from '@/components/ThreatAnalysisCard';
 
 // Services
 import { createSession, getSession, updateSessionStatus } from '@/services/sessionService';
 import { storeAudio } from '@/services/audioStorageService';
 import { transcribeChunks } from '@/services/sttService';
 import { storeTranscriptChunks, aggregateTranscripts } from '@/services/transcriptService';
-import type { Session } from '@/services/offlineStorage';
+import { translateChunks } from '@/services/translationService';
+import { storeTranslationChunks, aggregateTranslations } from '@/services/translationAggregationService';
+import type { Session, ThreatAnalysisRecord } from '@/services/offlineStorage';
 import type { SessionTranscript } from '@/services/transcriptService';
+import type { SessionTranslation } from '@/services/translationAggregationService';
 
 export default function Index() {
   const { toast } = useToast();
@@ -43,6 +50,21 @@ export default function Index() {
   const [transcriptionProgress, setTranscriptionProgress] = useState({ current: 0, total: 0 });
   const [currentLanguage, setCurrentLanguage] = useState<'hindi' | 'urdu' | 'kashmiri' | 'english' | undefined>();
   const [sessionTranscript, setSessionTranscript] = useState<SessionTranscript | null>(null);
+
+  // Translation state
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translationProgress, setTranslationProgress] = useState({ current: 0, total: 0 });
+  const [sessionTranslation, setSessionTranslation] = useState<SessionTranslation | null>(null);
+
+  // Threat analysis state
+  const [threatAnalysis, setThreatAnalysis] = useState<ThreatAnalysisRecord | null>(null);
+  const [isAnalyzingThreats, setIsAnalyzingThreats] = useState(false);
+
+  // Whisper model state
+  const [modelProgress, setModelProgress] = useState(0);
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   // UI state
   const [activeTab, setActiveTab] = useState<'record' | 'upload'>('record');
@@ -156,17 +178,36 @@ export default function Index() {
     setTranscriptionProgress({ current: 0, total: 0 });
 
     try {
-      // Create mock audio chunks (in real implementation, these would come from audio preprocessing)
-      const mockChunks = Array.from({ length: 5 }, (_, i) => ({
-        chunkId: `chunk-${String(i + 1).padStart(3, '0')}`,
-        audioBlob: new Blob(['mock audio data'], { type: 'audio/wav' }),
-        startTime: i * 5,
-      }));
+      // Initialize Whisper model if not loaded
+      const { initializeWhisperModel, getModelStatus } = await import('@/services/whisperService');
+      const modelStatus = getModelStatus();
 
-      setTranscriptionProgress({ current: 0, total: mockChunks.length });
+      if (!modelStatus.isLoaded && !modelStatus.isLoading) {
+        setIsModelLoading(true);
+        await initializeWhisperModel((progress) => {
+          setModelProgress(progress);
+        });
+        setIsModelLoaded(true);
+        setIsModelLoading(false);
+      }
+
+      // Get the actual audio from IndexedDB
+      const { getAudio } = await import('@/services/audioStorageService');
+      const audioRecord = await getAudio(audioId);
+
+      if (!audioRecord) {
+        throw new Error('Audio not found');
+      }
+
+      // Split audio into chunks for processing
+      const { splitAudioIntoChunks } = await import('@/services/audioChunkingService');
+      const audioChunks = await splitAudioIntoChunks(audioRecord.audioBlob, 30); // 30-second chunks
+
+      setTranscriptionProgress({ current: 0, total: audioChunks.length });
 
       // Transcribe chunks with progress
-      const transcripts = await transcribeChunks(mockChunks, (current, total) => {
+      let transcripts: any[] = [];
+      transcripts = await transcribeChunks(audioChunks, (current, total) => {
         setTranscriptionProgress({ current, total });
         if (current > 0 && transcripts.length > 0) {
           setCurrentLanguage(transcripts[current - 1].language);
@@ -188,7 +229,7 @@ export default function Index() {
 
       toast({
         title: 'Transcription Complete',
-        description: `${transcripts.length} chunks transcribed in ${aggregated.language}`,
+        description: `Transcribed ${transcripts.length} chunks`,
       });
     } catch (error) {
       console.error('Transcription error:', error);
@@ -199,6 +240,112 @@ export default function Index() {
       });
     } finally {
       setIsTranscribing(false);
+    }
+  };
+
+  /**
+   * Handle translation
+   */
+  const handleTranslate = async () => {
+    if (!currentSession || !sessionTranscript) return;
+
+    setIsTranslating(true);
+    setTranslationProgress({ current: 0, total: 0 });
+
+    try {
+      const transcriptChunks = sessionTranscript.fullTranscript;
+      setTranslationProgress({ current: 0, total: transcriptChunks.length });
+
+      // Translate chunks with progress
+      const translations = await translateChunks(transcriptChunks, (current, total) => {
+        setTranslationProgress({ current, total });
+      });
+
+      // Store translations in IndexedDB
+      await storeTranslationChunks(currentSession.sessionId, translations);
+
+      // Update session status
+      await updateSessionStatus(currentSession.sessionId, 'translated');
+
+      // Aggregate translations
+      const aggregated = await aggregateTranslations(currentSession.sessionId);
+      setSessionTranslation(aggregated);
+
+      const updatedSession = await getSession(currentSession.sessionId);
+      if (updatedSession) setCurrentSession(updatedSession);
+
+      toast({
+        title: 'Translation Complete',
+        description: `Translated ${translations.length} chunks to English`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Translation Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  /**
+   * Analyze threats in session
+   */
+  const handleAnalyzeThreats = async () => {
+    if (!currentSession) {
+      toast({
+        title: 'No Session',
+        description: 'Please create a session and transcribe audio first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!sessionTranscript || !sessionTranscript.fullTranscript) {
+      toast({
+        title: 'No Transcript',
+        description: 'Please transcribe audio before analyzing threats',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsAnalyzingThreats(true);
+
+      toast({
+        title: 'Analyzing Threats',
+        description: 'Scanning transcript for threat indicators...',
+      });
+
+      // Import orchestrator dynamically
+      const { analyzeSessionThreats } = await import('@/services/threatAnalysisOrchestrator');
+
+      // Run threat analysis
+      const analysis = await analyzeSessionThreats(currentSession.sessionId);
+
+      setThreatAnalysis(analysis);
+
+      // Update session status
+      await updateSessionStatus(currentSession.sessionId, 'analyzed');
+
+      const updatedSession = await getSession(currentSession.sessionId);
+      if (updatedSession) setCurrentSession(updatedSession);
+
+      toast({
+        title: 'Analysis Complete',
+        description: `Threat level: ${analysis.severity} (Score: ${analysis.threatScore})`,
+        variant: analysis.severity === 'HIGH_RISK' ? 'destructive' : 'default',
+      });
+    } catch (error) {
+      toast({
+        title: 'Analysis Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAnalyzingThreats(false);
     }
   };
 
@@ -215,6 +362,8 @@ export default function Index() {
     setTranscriptionProgress({ current: 0, total: 0 });
     setCurrentLanguage(undefined);
     setSessionTranscript(null);
+    setSessionTranslation(null);
+    setIsTranslating(false);
     setActiveTab('record');
   };
 
@@ -284,24 +433,24 @@ export default function Index() {
               <AudioPlayer audioId={audioId} format={audioFormat} duration={audioDuration} />
             )}
 
-            {/* Transcription Section */}
+            {/* Whisper Model Loading */}
+            {(isModelLoading || isModelLoaded) && (
+              <ModelLoadingProgress
+                progress={modelProgress}
+                isLoading={isModelLoading}
+                isLoaded={isModelLoaded}
+              />
+            )}
+
+            {/* Transcription */}
             {hasAudio && !sessionTranscript && (
               <Card className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Speech-to-Text Transcription
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Convert audio to text with language detection
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleTranscribe}
-                    disabled={isTranscribing}
-                    size="lg"
-                  >
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Step 2: Transcribe Audio</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Convert audio to text with automatic language detection
+                  </p>
+                  <Button onClick={handleTranscribe} disabled={isTranscribing} className="w-full">
                     {isTranscribing ? 'Transcribing...' : 'Transcribe Audio'}
                   </Button>
                 </div>
@@ -314,17 +463,69 @@ export default function Index() {
                 current={transcriptionProgress.current}
                 total={transcriptionProgress.total}
                 currentLanguage={currentLanguage}
-                isProcessing={isTranscribing}
               />
             )}
 
             {/* Transcript Viewer */}
-            {sessionTranscript && (
+            {sessionTranscript && !sessionTranslation && (
               <TranscriptViewer transcript={sessionTranscript} />
             )}
 
-            {/* Export & Actions */}
-            {hasAudio && (
+            {/* Translation */}
+            {sessionTranscript && !sessionTranslation && !isTranslating && (
+              <Card className="p-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Step 3: Translate to English</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Translate transcript to English for analysis and reporting
+                  </p>
+                  <Button onClick={handleTranslate} className="w-full">
+                    Translate to English
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Translation Progress */}
+            {isTranslating && (
+              <TranslationProgress
+                current={translationProgress.current}
+                total={translationProgress.total}
+                currentLanguage={currentLanguage}
+              />
+            )}
+
+            {/* Dual Language Viewer */}
+            {sessionTranslation && (
+              <DualLanguageViewer translation={sessionTranslation} />
+            )}
+
+            {/* Threat Analysis */}
+            {sessionTranscript && !threatAnalysis && (
+              <Card className="p-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Step 3: Analyze Threats</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Scan transcript for threat-related keywords and generate risk assessment
+                  </p>
+                  <Button
+                    onClick={handleAnalyzeThreats}
+                    disabled={isAnalyzingThreats}
+                    className="w-full"
+                  >
+                    {isAnalyzingThreats ? 'Analyzing...' : 'Analyze Threats'}
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Threat Analysis Results */}
+            {threatAnalysis && (
+              <ThreatAnalysisCard analysis={threatAnalysis} />
+            )}
+
+            {/* Export */}
+            {sessionTranscript && (
               <div className="flex gap-4">
                 <ExportButtons sessionId={currentSession.sessionId} disabled={false} />
                 <Button variant="outline" onClick={handleReset} className="ml-auto">

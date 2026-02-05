@@ -8,9 +8,11 @@ import {
     AudioRecord,
     saveAudio as saveAudioToDB,
     getAudio as getAudioFromDB,
-    getAudioBySession,
     deleteAudio as deleteAudioFromDB,
 } from './offlineStorage';
+
+// Import getAudioBySession directly from offlineStorage
+import { getAudioBySession as getAudioBySessionFromDB } from './offlineStorage';
 
 /**
  * Store audio in IndexedDB
@@ -30,7 +32,7 @@ export const storeAudio = async (
         format,
         duration,
         size: audioBlob.size,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
     };
 
     await saveAudioToDB(audioRecord);
@@ -49,8 +51,8 @@ export const getAudio = async (audioId: string): Promise<AudioRecord | null> => 
 /**
  * Get audio for a session
  */
-export const getSessionAudio = async (sessionId: string): Promise<AudioRecord | null> => {
-    return await getAudioBySession(sessionId);
+export const getAudioBySession = async (sessionId: string): Promise<AudioRecord | null> => {
+    return await getAudioBySessionFromDB(sessionId);
 };
 
 /**

@@ -294,6 +294,105 @@ app.get('/api/transcript/:sessionId', (req, res) => {
   });
 });
 
+/**
+ * Translation Endpoint (Checkpoint 4)
+ * Translate transcript chunks to English
+ */
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { sessionId, transcriptChunks } = req.body;
+
+    if (!sessionId || !transcriptChunks || !Array.isArray(transcriptChunks)) {
+      return res.status(400).json({ error: 'sessionId and transcriptChunks array required' });
+    }
+
+    console.log(`Translating ${transcriptChunks.length} chunks for session ${sessionId}`);
+
+    // Mock translation (dictionary-based)
+    const phraseDictionary = {
+      hindi: {
+        'यह एक परीक्षण ऑडियो है': 'This is a test audio',
+        'कृपया ध्यान से सुनें': 'Please listen carefully',
+        'धन्यवाद': 'Thank you',
+      },
+      urdu: {
+        'یہ ایک ٹیسٹ آڈیو ہے': 'This is a test audio',
+        'براہ کرم غور سے سنیں': 'Please listen carefully',
+        'شکریہ': 'Thank you',
+      },
+      kashmiri: {
+        'یہ اکھ ٹیسٹ آڈیو چھُ': 'This is a test audio',
+        'مہربأنی کٔرتھ غور سٟتؠ بوزِو': 'Please listen carefully',
+        'شُکریہ': 'Thank you',
+      },
+      english: {},
+    };
+
+    const translations = transcriptChunks.map((chunk) => {
+      const { chunkId, sourceLanguage, sourceText, startTime } = chunk;
+
+      // Translate using dictionary or return as-is for English
+      let translatedText = sourceText;
+      let confidence = 1.0;
+
+      if (sourceLanguage !== 'english') {
+        const dict = phraseDictionary[sourceLanguage] || {};
+        translatedText = dict[sourceText] || sourceText;
+        confidence = dict[sourceText] ? 0.9 : 0.7; // Higher confidence for exact matches
+      }
+
+      return {
+        chunkId,
+        sourceLanguage,
+        sourceText,
+        translatedText,
+        confidence,
+        startTime: startTime || 0,
+      };
+    });
+
+    // Update session status
+    const session = sessions.get(sessionId);
+    if (session) {
+      session.status = 'translated';
+      sessions.set(sessionId, session);
+    }
+
+    console.log(`✓ Translated ${translations.length} chunks for session ${sessionId}`);
+
+    res.json({
+      sessionId,
+      chunksTranslated: translations.length,
+      targetLanguage: 'english',
+      translations,
+    });
+  } catch (error) {
+    console.error('Translation error:', error);
+    res.status(500).json({ error: 'Failed to process translation' });
+  }
+});
+
+/**
+ * Get Translation by Session
+ */
+app.get('/api/translation/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = sessions.get(sessionId);
+
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  // In a real implementation, translations would be stored
+  // For now, return session info
+  res.json({
+    sessionId,
+    status: session.status,
+    targetLanguage: 'english',
+    message: 'Translations are stored in browser IndexedDB',
+  });
+});
+
 // ============================================
 // SERVER STARTUP
 // ============================================

@@ -8,6 +8,8 @@ import { getSession } from './sessionService';
 import { getAudioBySession } from './audioStorageService';
 import { getTranscriptsBySession } from './transcriptStorage';
 import { aggregateTranscripts } from './transcriptService';
+import { getTranslationsBySession } from './translationStorage';
+import { aggregateTranslations } from './translationAggregationService';
 
 /**
  * Export session data as JSON
@@ -41,6 +43,26 @@ export async function exportSessionAsJSON(sessionId: string): Promise<void> {
             };
         }
 
+        // Build translation data
+        let translationData = null;
+        const translations = await getTranslationsBySession(sessionId);
+        if (translations.length > 0) {
+            const aggregated = await aggregateTranslations(sessionId);
+            translationData = {
+                targetLanguage: 'english',
+                totalChunks: aggregated.totalChunks,
+                bilingualTranscript: aggregated.translatedTranscript.map((chunk) => ({
+                    chunkId: chunk.chunkId,
+                    startTime: chunk.startTime,
+                    sourceLanguage: chunk.sourceLanguage,
+                    sourceText: chunk.sourceText,
+                    translatedText: chunk.translatedText,
+                    confidence: chunk.confidence,
+                })),
+                fullEnglishText: aggregated.translatedTranscript.map((c) => c.translatedText).join(' '),
+            };
+        }
+
         const exportData = {
             sessionId: session.sessionId,
             createdAt: session.createdAt,
@@ -55,9 +77,9 @@ export async function exportSessionAsJSON(sessionId: string): Promise<void> {
                 }
                 : null,
             transcript: transcriptData,
+            translation: translationData,
             // Placeholders for future checkpoints
-            translation: null, // TODO (Checkpoint 4)
-            threatAnalysis: null, // TODO (Checkpoint 4)
+            threatAnalysis: null, // TODO (Checkpoint 5)
         };
 
         const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -91,26 +113,37 @@ export async function exportSessionAsCSV(sessionId: string): Promise<void> {
         }
 
         const transcripts = await getTranscriptsBySession(sessionId);
+        const translations = await getTranslationsBySession(sessionId);
 
-        // CSV Headers
+        // Create a map of translations by chunkId for easy lookup
+        const translationMap = new Map(
+            translations.map((t) => [t.chunkId, t])
+        );
+
+        // CSV Headers (bilingual)
         const headers = [
             'sessionId',
             'chunkId',
             'startTime',
-            'language',
+            'sourceLanguage',
+            'sourceText',
+            'translatedText',
             'confidence',
-            'text',
         ];
 
         // CSV Rows
-        const rows = transcripts.map((t) => [
-            sessionId,
-            t.chunkId,
-            t.startTime.toString(),
-            t.language,
-            t.confidence.toString(),
-            `"${t.text.replace(/"/g, '""')}"`, // Escape quotes
-        ]);
+        const rows = transcripts.map((t) => {
+            const translation = translationMap.get(t.chunkId);
+            return [
+                sessionId,
+                t.chunkId,
+                t.startTime.toString(),
+                t.language,
+                `"${t.text.replace(/"/g, '""')}"`, // Escape quotes
+                translation ? `"${translation.translatedText.replace(/"/g, '""')}"` : '',
+                translation ? translation.confidence?.toString() || '' : t.confidence.toString(),
+            ];
+        });
 
         // Build CSV content
         const csvContent = [
@@ -123,7 +156,7 @@ export async function exportSessionAsCSV(sessionId: string): Promise<void> {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `session-${sessionId}-transcripts-${Date.now()}.csv`;
+        a.download = `session-${sessionId}-${Date.now()}.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

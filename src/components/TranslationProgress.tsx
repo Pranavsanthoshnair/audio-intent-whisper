@@ -1,31 +1,23 @@
-/**
- * Transcription Progress Component
- * Shows real-time progress of audio transcription
- */
-
-import { Progress } from '@/components/ui/progress';
+import React from 'react';
+import { Languages, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Loader2 } from 'lucide-react';
-import { Language } from '@/services/offlineStorage';
+import type { Language } from '@/services/offlineStorage';
 
-interface TranscriptionProgressProps {
+interface TranslationProgressProps {
     current: number;
     total: number;
     currentLanguage?: Language;
 }
 
-export function TranscriptionProgress({
-    current,
-    total,
-    currentLanguage,
-}: TranscriptionProgressProps) {
+export function TranslationProgress({ current, total, currentLanguage }: TranslationProgressProps) {
     const progress = total > 0 ? (current / total) * 100 : 0;
 
     const languageLabels: Record<Language, string> = {
-        hindi: 'Hindi (हिंदी)',
-        urdu: 'Urdu (اردو)',
-        kashmiri: 'Kashmiri (کٲشُر)',
+        hindi: 'Hindi',
+        urdu: 'Urdu',
+        kashmiri: 'Kashmiri',
         english: 'English',
     };
 
@@ -33,12 +25,13 @@ export function TranscriptionProgress({
         <Card className="p-6">
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Transcribing Audio
-                    </h3>
+                    <div className="flex items-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        <h3 className="text-lg font-semibold">Translating to English...</h3>
+                    </div>
                     {currentLanguage && (
-                        <Badge variant="secondary" className="font-mono">
+                        <Badge variant="outline" className="gap-1">
+                            <Languages className="w-3 h-3" />
                             {languageLabels[currentLanguage]}
                         </Badge>
                     )}
@@ -46,16 +39,16 @@ export function TranscriptionProgress({
 
                 <div className="space-y-2">
                     <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Progress</span>
                         <span>
-                            Processing chunk {current} of {total}
+                            {current} / {total} chunks
                         </span>
-                        <span>{Math.round(progress)}%</span>
                     </div>
                     <Progress value={progress} className="h-2" />
                 </div>
 
                 <p className="text-sm text-muted-foreground">
-                    Converting speech to text with language detection...
+                    Translating transcript chunks offline using dictionary-based translation...
                 </p>
             </div>
         </Card>

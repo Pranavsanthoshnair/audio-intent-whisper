@@ -1,16 +1,17 @@
 /**
- * Offline Storage Service - IndexedDB v3
- * Manages local storage for sessions, audio, and transcripts
+ * Offline Storage Service
+ * Manages IndexedDB for offline-first audio intent analysis
  * 
- * Version History:
+ * Schema Versions:
  * - v1: Initial schema
  * - v2: Added sessions and audio tables (Checkpoint 2)
  * - v3: Added transcripts table (Checkpoint 3)
- * - v3: Added transcripts table (Checkpoint 3)
+ * - v4: Added translations table (Checkpoint 4)
+ * - v5: Added threat analysis table (Checkpoint 5)
  */
 
 const DB_NAME = 'OfflineAudioIntentDB';
-const DB_VERSION = 3; // Updated for transcripts
+const DB_VERSION = 5; // Updated for threat analysis
 
 export type Language = 'hindi' | 'urdu' | 'kashmiri' | 'english';
 
@@ -44,22 +45,32 @@ export interface TranscriptRecord {
     createdAt: Date;
 }
 
-// Future table schemas (not implemented yet)
-export interface Transcript {
-    transcriptId: string;
-    sessionId: string;
+// Export TranscriptChunk for use in other services
+export interface TranscriptChunk {
+    chunkId: string;
     text: string;
-    language: string;
+    language: Language;
     confidence: number;
-    createdAt: string;
+    startTime: number;
+    duration: number;
 }
 
-export interface Translation {
+export interface TranslationRecord {
     translationId: string;
-    transcriptId: string;
-    targetLanguage: string;
+    sessionId: string;
+    chunkId: string;
+    sourceLanguage: Language;
+    sourceText: string;
     translatedText: string;
-    createdAt: string;
+    confidence?: number; // 0-1
+    startTime: number; // seconds
+    createdAt: Date;
+}
+
+// Session with audio (for retrieval)
+export interface SessionWithAudio {
+    session: Session;
+    audio: AudioRecord | null;
 }
 
 export interface ThreatAnalysis {
@@ -69,6 +80,28 @@ export interface ThreatAnalysis {
     threatLevel: 'low' | 'medium' | 'high' | 'critical';
     indicators: string[];
     createdAt: string;
+}
+
+export interface ThreatAnalysisRecord {
+    analysisId: string;
+    sessionId: string;
+    threatScore: number;
+    severity: 'SAFE' | 'SUSPICIOUS' | 'HIGH_RISK';
+    triggeredKeywords: Array<{
+        word: string;
+        category: string;
+        count: number;
+    }>;
+    categoryBreakdown: {
+        violent_actions: number;
+        weapons: number;
+        events: number;
+        targets: number;
+        urgency: number;
+    };
+    explanationText: string;
+    chunksInvolved: number;
+    createdAt: Date;
 }
 
 /**
@@ -117,6 +150,29 @@ export const initDB = (): Promise<IDBDatabase> => {
                     transcriptsStore.createIndex('chunkId', 'chunkId', { unique: false });
                     transcriptsStore.createIndex('createdAt', 'createdAt', { unique: false });
                     console.log('✓ Created transcripts table');
+                }
+            }
+
+            // v3 -> v4: Create translations table
+            if (oldVersion < 4) {
+                if (!db.objectStoreNames.contains('translations')) {
+                    const translationsStore = db.createObjectStore('translations', { keyPath: 'translationId' });
+                    translationsStore.createIndex('sessionId', 'sessionId', { unique: false });
+                    translationsStore.createIndex('chunkId', 'chunkId', { unique: false });
+                    translationsStore.createIndex('createdAt', 'createdAt', { unique: false });
+                    console.log('✓ Created translations table');
+                }
+            }
+
+            // v4 -> v5: Create threat analysis table
+            if (oldVersion < 5) {
+                if (!db.objectStoreNames.contains('threatAnalysis')) {
+                    const threatStore = db.createObjectStore('threatAnalysis', { keyPath: 'analysisId' });
+                    threatStore.createIndex('sessionId', 'sessionId', { unique: true });
+                    threatStore.createIndex('severity', 'severity', { unique: false });
+                    threatStore.createIndex('threatScore', 'threatScore', { unique: false });
+                    threatStore.createIndex('createdAt', 'createdAt', { unique: false });
+                    console.log('✓ Created threat analysis table');
                 }
             }
 

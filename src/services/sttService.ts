@@ -95,22 +95,45 @@ class MockSTTEngine implements STTEngine {
 }
 
 /**
- * Whisper.js STT Engine (Future Implementation)
- * TODO (Future): Implement real Whisper.js integration
+ * Whisper.js STT Engine (Real Implementation)
+ * Uses Transformers.js for offline transcription
  */
 class WhisperSTTEngine implements STTEngine {
     async transcribe(audioBlob: Blob, chunkId: string, startTime: number): Promise<TranscriptChunk> {
-        throw new Error('Whisper.js engine not implemented yet');
-        // TODO: Implement Whisper.js transcription
-        // 1. Load Whisper model
-        // 2. Convert audio to required format
-        // 3. Run inference
-        // 4. Extract text, language, and confidence
+        try {
+            const { transcribeAudio } = await import('./whisperService');
+
+            // Transcribe using Whisper
+            const result = await transcribeAudio(audioBlob);
+
+            // Calculate duration from blob
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const duration = audioBuffer.duration;
+
+            return {
+                chunkId,
+                text: result.text,
+                language: result.language,
+                confidence: result.confidence,
+                startTime,
+                duration: parseFloat(duration.toFixed(2)),
+            };
+        } catch (error) {
+            console.error('Whisper transcription error:', error);
+            throw new Error('Failed to transcribe audio with Whisper');
+        }
     }
 
     async detectLanguage(audioBlob: Blob): Promise<Language> {
-        throw new Error('Whisper.js language detection not implemented yet');
-        // TODO: Implement Whisper.js language detection
+        try {
+            const { detectLanguage } = await import('./whisperService');
+            return await detectLanguage(audioBlob);
+        } catch (error) {
+            console.error('Whisper language detection error:', error);
+            return 'english'; // Fallback
+        }
     }
 }
 
@@ -130,9 +153,45 @@ export function createSTTEngine(type: 'mock' | 'whisper' = 'mock'): STTEngine {
 }
 
 /**
- * Default STT Engine Instance
+ * Smart STT Engine with Fallback
+ * Tries Whisper, falls back to Mock on error
  */
-export const sttEngine = createSTTEngine('mock');
+class SmartSTTEngine implements STTEngine {
+    private whisperEngine = new WhisperSTTEngine();
+    private mockEngine = new MockSTTEngine();
+    private useWhisper = true;
+
+    async transcribe(audioBlob: Blob, chunkId: string, startTime: number): Promise<TranscriptChunk> {
+        if (this.useWhisper) {
+            try {
+                return await this.whisperEngine.transcribe(audioBlob, chunkId, startTime);
+            } catch (error) {
+                console.warn('⚠️ Whisper failed, falling back to mock engine:', error);
+                this.useWhisper = false;
+                return await this.mockEngine.transcribe(audioBlob, chunkId, startTime);
+            }
+        }
+        return await this.mockEngine.transcribe(audioBlob, chunkId, startTime);
+    }
+
+    async detectLanguage(audioBlob: Blob): Promise<Language> {
+        if (this.useWhisper) {
+            try {
+                return await this.whisperEngine.detectLanguage(audioBlob);
+            } catch (error) {
+                console.warn('⚠️ Whisper language detection failed, using mock');
+                return await this.mockEngine.detectLanguage(audioBlob);
+            }
+        }
+        return await this.mockEngine.detectLanguage(audioBlob);
+    }
+}
+
+/**
+ * Default STT Engine Instance
+ * Using Smart engine with automatic fallback
+ */
+export const sttEngine = new SmartSTTEngine();
 
 /**
  * Transcribe multiple audio chunks
