@@ -6,6 +6,7 @@
  * - v1: Initial schema
  * - v2: Added sessions and audio tables (Checkpoint 2)
  * - v3: Added transcripts table (Checkpoint 3)
+ * - v3: Added transcripts table (Checkpoint 3)
  */
 
 const DB_NAME = 'OfflineAudioIntentDB';

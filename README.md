@@ -247,7 +247,8 @@ List all sessions (debugging)
 - **Offline Support**: Fully functional
 
 ### Future Checkpoints
-- **Checkpoint 2**: Audio processing (Whisper)
+- **Checkpoint 2**: Audio recording and storage (Completed)
+- **Checkpoint 3**: Offline Speech-to-Text with language detection (Completed)
 - **Checkpoint 3**: AI analysis and threat detection
 
 ### Mock Behavior
@@ -313,6 +314,15 @@ taskkill /PID <PID> /F
 
 ---
 
-## 🎉 Ready for Checkpoint 2!
+## 🎉 Checkpoint 3 Complete!
+
+**Implemented Features:**
+- ✅ Offline STT with mock engine
+- ✅ Multi-language support (Hindi, Urdu, Kashmiri, English)
+- ✅ Confidence scoring and language detection
+- ✅ Transcript aggregation and storage
+- ✅ Export with transcript data
+
+**Ready for Checkpoint 4:** Translation and Threat Analysis
 
 The offline-first foundation is complete and ready for audio processing integration in the next checkpoint.

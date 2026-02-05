@@ -2,7 +2,6 @@
  * Offline Backend Service Client
  * Handles communication with local Node.js backend
  * 
- * TODO (Checkpoint 2): Add audio upload endpoints
  * TODO (Checkpoint 3): Add AI processing endpoints
  */
 

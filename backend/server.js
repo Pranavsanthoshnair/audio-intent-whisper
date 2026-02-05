@@ -64,7 +64,7 @@ app.get('/api/ping', (req, res) => {
  * Initialize Session Endpoint
  * Creates a new offline session/case
  * 
- * TODO (Checkpoint 2): Add audio processing logic
+ * TODO (Checkpoint 4): Add translation and threat analysis
  * TODO (Checkpoint 3): Add AI/ML integration
  */
 app.post('/api/init-session', (req, res) => {
@@ -138,7 +138,7 @@ app.get('/api/sessions', (req, res) => {
 });
 
 /**
- * Audio Upload Endpoint (Checkpoint 2)
+ * Audio Upload Endpoint (Checkpoint 2 - Completed)
  * Accept audio metadata and link to session
  */
 app.post('/api/audio/upload', (req, res) => {
