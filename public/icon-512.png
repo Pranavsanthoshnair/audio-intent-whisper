@@ -1,0 +1,17 @@
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" fill="#000000" rx="32"/>
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0066ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Microphone -->
+  <rect x="80" y="50" width="32" height="48" rx="16" fill="url(#grad)"/>
+  <path d="M 70 90 Q 70 110 96 110 Q 122 110 122 90" stroke="url(#grad)" stroke-width="4" fill="none"/>
+  <line x1="96" y1="110" x2="96" y2="130" stroke="url(#grad)" stroke-width="4"/>
+  <line x1="80" y1="130" x2="112" y2="130" stroke="url(#grad)" stroke-width="4"/>
+  <!-- Waveform -->
+  <path d="M 40 150 L 50 140 L 60 155 L 70 145 L 80 150" stroke="#00d4ff" stroke-width="3" fill="none" opacity="0.6"/>
+  <path d="M 112 150 L 122 145 L 132 155 L 142 140 L 152 150" stroke="#0066ff" stroke-width="3" fill="none" opacity="0.6"/>
+</svg>
