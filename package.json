@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "backend": "cd backend && node server.js",
-    "dev:full": "concurrently \"npm run dev\" \"npm run backend\" --names \"frontend,backend\" --prefix-colors \"cyan,green\""
+    "dev:full": "concurrently \"npm run dev\" \"npm run backend\" --names \"frontend,backend\" --prefix-colors \"cyan,green\"",
+    "offline-engine:build": "tsc -p offline-engine/tsconfig.json",
+    "offline-engine:start": "npm run offline-engine:build && node offline-engine/dist/server.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

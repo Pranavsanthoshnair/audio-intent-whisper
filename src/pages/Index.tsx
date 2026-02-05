@@ -3,7 +3,7 @@
  * Checkpoint 3: Integrated with STT transcription
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,7 +21,6 @@ import { TranscriptionProgress } from '@/components/TranscriptionProgress';
 import { TranscriptViewer } from '@/components/TranscriptViewer';
 import { TranslationProgress } from '@/components/TranslationProgress';
 import { DualLanguageViewer } from '@/components/DualLanguageViewer';
-import { ModelLoadingProgress } from '@/components/ModelLoadingProgress';
 import { ThreatAnalysisCard } from '@/components/ThreatAnalysisCard';
 
 // Services
@@ -59,12 +58,6 @@ export default function Index() {
   // Threat analysis state
   const [threatAnalysis, setThreatAnalysis] = useState<ThreatAnalysisRecord | null>(null);
   const [isAnalyzingThreats, setIsAnalyzingThreats] = useState(false);
-
-  // Whisper model state
-  const [modelProgress, setModelProgress] = useState(0);
-  const [isModelLoading, setIsModelLoading] = useState(false);
-  const [isModelLoaded, setIsModelLoaded] = useState(false);
-  const [modelError, setModelError] = useState<string | null>(null);
 
   // UI state
   const [activeTab, setActiveTab] = useState<'record' | 'upload'>('record');
@@ -178,19 +171,8 @@ export default function Index() {
     setTranscriptionProgress({ current: 0, total: 0 });
 
     try {
-      // Initialize Whisper model if not loaded
-      const { initializeWhisperModel, getModelStatus } = await import('@/services/whisperService');
-      const modelStatus = getModelStatus();
-
-      if (!modelStatus.isLoaded && !modelStatus.isLoading) {
-        setIsModelLoading(true);
-        await initializeWhisperModel((progress) => {
-          setModelProgress(progress);
-        });
-        setIsModelLoaded(true);
-        setIsModelLoading(false);
-      }
-
+      // Whisper runs in the local offline engine only.
+      // Frontend only retrieves chunk audio and sends it to localhost API.
       // Get the actual audio from IndexedDB
       const { getAudio } = await import('@/services/audioStorageService');
       const audioRecord = await getAudio(audioId);
@@ -207,11 +189,9 @@ export default function Index() {
 
       // Transcribe chunks with progress
       let transcripts: any[] = [];
-      transcripts = await transcribeChunks(audioChunks, (current, total) => {
+      transcripts = await transcribeChunks(currentSession.sessionId, audioChunks, (current, total, latest) => {
         setTranscriptionProgress({ current, total });
-        if (current > 0 && transcripts.length > 0) {
-          setCurrentLanguage(transcripts[current - 1].language);
-        }
+        setCurrentLanguage(latest.language);
       });
 
       // Store transcripts in IndexedDB
@@ -278,6 +258,23 @@ export default function Index() {
         title: 'Translation Complete',
         description: `Translated ${translations.length} chunks to English`,
       });
+
+      const { analyzeSessionThreats } = await import('@/services/threatAnalysisOrchestrator');
+      const analysis = await analyzeSessionThreats(currentSession.sessionId);
+      setThreatAnalysis(analysis);
+
+      if (analysis.threatScore > 0) {
+        toast({
+          title: 'Threat Alert',
+          description: `Potential threat indicators found (${analysis.severity}, score ${analysis.threatScore}).`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'No Immediate Threats Detected',
+          description: 'No threat keywords were detected in the analyzed transcript.',
+        });
+      }
     } catch (error) {
       toast({
         title: 'Translation Failed',
@@ -431,15 +428,6 @@ export default function Index() {
             {/* Audio Playback */}
             {hasAudio && audioId && (
               <AudioPlayer audioId={audioId} format={audioFormat} duration={audioDuration} />
-            )}
-
-            {/* Whisper Model Loading */}
-            {(isModelLoading || isModelLoaded) && (
-              <ModelLoadingProgress
-                progress={modelProgress}
-                isLoading={isModelLoading}
-                isLoaded={isModelLoaded}
-              />
             )}
 
             {/* Transcription */}

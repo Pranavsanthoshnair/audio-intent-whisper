@@ -326,3 +326,31 @@ taskkill /PID <PID> /F
 **Ready for Checkpoint 4:** Translation and Threat Analysis
 
 The offline-first foundation is complete and ready for audio processing integration in the next checkpoint.
+
+---
+
+## 🔒 Offline Whisper Architecture (Updated)
+
+Whisper transcription is now isolated in a **separate local Node.js engine** under `offline-engine/`.
+
+- Frontend **does not import** `@xenova/transformers`.
+- Frontend sends chunked WAV audio to `http://localhost:3040/transcribe`.
+- Offline engine loads Whisper + translation models from local disk only.
+- Runtime model download is disabled (`allowRemoteModels = false`).
+
+### Run offline engine
+
+```bash
+npm run offline-engine:start
+```
+
+### One-time model preparation
+
+Before running the engine, place the pre-downloaded model files in:
+
+```text
+offline-engine/models/openai/whisper-tiny/
+offline-engine/models/Xenova/m2m100_418M/
+```
+
+No auto-download is performed at runtime.
